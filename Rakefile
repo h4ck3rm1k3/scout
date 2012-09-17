@@ -145,14 +145,20 @@ namespace :subscriptions do
       desc "Check for new #{subscription_type} items for initialized subscriptions"
       task subscription_type.to_sym => :environment do
         begin
+          rate_limit = ENV['rate_limit'].present? ? ENV['rate_limit'].to_f : 0.1
+
+          count = 0
           errors = []
           start = Time.now
 
-          Subscription.initialized.where(:subscription_type => subscription_type).each do |subscription|
+          Subscription.initialized.where(subscription_type: subscription_type).each do |subscription|
             if subscription.user.confirmed?
               
               result = Subscriptions::Manager.check!(subscription)
-              sleep 0.1 # rate limit just a little bit!
+              count +=1 
+
+              sleep rate_limit
+              puts "sleeping for #{rate_limit}"
 
               if result.nil? or result.is_a?(Hash)
                 errors << result
@@ -164,11 +170,11 @@ namespace :subscriptions do
             Admin.report Report.warning(
               "check:#{subscription_type}", "#{errors.size} errors while checking #{subscription_type}, will check again next time.", 
               errors: errors,
-              )
+            )
           end
 
           Report.complete(
-            "check:#{subscription_type}", "Completed checking #{subscription_type}", elapsed_time: (Time.now - start)
+            "check:#{subscription_type}", "Completed checking #{count} #{subscription_type} subscriptions", elapsed_time: (Time.now - start)
           )
 
         rescue Exception => ex
